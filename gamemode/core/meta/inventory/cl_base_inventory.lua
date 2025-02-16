@@ -29,7 +29,7 @@ net.Receive("nutInventoryInit", function()
     local data2 = net.ReadData(length)
     local uncompressed_data = util.Decompress(data2)
   
-    local items = util.JSONToTable(uncompressed_data)
+    local items = pon.decode(uncompressed_data)
 
     local function readItem(I)
         local c = items[I] -- i

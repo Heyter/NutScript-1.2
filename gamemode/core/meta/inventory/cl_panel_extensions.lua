@@ -43,6 +43,7 @@ function PANEL:nutListenForInventoryChanges(inventory)
 	listenForInventoryChange("InventoryDataChanged")
 	listenForInventoryChange("InventoryItemAdded")
 	listenForInventoryChange("InventoryItemRemoved")
+	listenForInventoryChange("InventoryItemMoved")
 
 	hook.Add(
 		"ItemDataChanged",

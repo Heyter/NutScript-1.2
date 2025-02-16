@@ -1,4 +1,6 @@
 util.AddNetworkString("nutTransferItem")
+util.AddNetworkString("nutMoveItem")
+util.AddNetworkString("nutItemTransfer")
 
 local TRANSFER = "transfer"
 
@@ -68,6 +70,14 @@ function PLUGIN:HandleItemTransferRequest(client, itemID, x, y, invID)
 
 	local tryCombineWith
 	local originalAddRes
+
+	if oldInventory == inventory then
+		if oldInventory.move then
+			return oldInventory:move(item, x, y)
+		end
+	elseif oldInventory.transferItem then
+		return oldInventory:transferItem(item, inventory)
+	end
 
 	return oldInventory:removeItem(itemID, true)
 		:next(function()

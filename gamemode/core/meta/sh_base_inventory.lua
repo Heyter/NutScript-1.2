@@ -125,12 +125,14 @@ end
 -- @return A table containing items whose type matches
 function Inventory:getItemsOfType(itemType)
 	local items = {}
+	local index = 0
 	for _, item in pairs(self:getItems()) do
 		if (item.uniqueID == itemType) then
-			items[#items + 1] = item
+			index = index + 1
+			items[index] = item
 		end
 	end
-	return items
+	return items, index
 end
 
 --- Returns an item in this inventory of a specific type, or nil if not found.

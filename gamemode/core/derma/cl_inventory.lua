@@ -245,16 +245,14 @@ function PANEL:InventoryDeleted(inventory)
 end
 
 -- Called when the given item has been added to the inventory.
-function PANEL:InventoryItemAdded(item)
-end
+function PANEL:InventoryItemAdded(item) end
 
 -- Called when the given item has been removed from the inventory.
-function PANEL:InventoryItemRemoved(item)
-end
+function PANEL:InventoryItemRemoved(item) end
 
 -- Called when an item within this inventory has its data changed.
-function PANEL:InventoryItemDataChanged(item, key, oldValue, newValue)
-end
+function PANEL:InventoryItemDataChanged(item, key, oldValue, newValue) end
+function PANEL:InventoryItemMoved(item, newX, newY) end
 
 -- Make sure to clean up hooks before removing the panel.
 function PANEL:OnRemove()
@@ -270,7 +268,7 @@ hook.Add("CreateMenuButtons", "nutInventory", function(tabs)
 		local inventory = LocalPlayer():getChar():getInv()
 
 		if (not inventory) then return end
-		local mainPanel = inventory:show(panel)
+		local mainPanel = nut.inventory.show(inventory, panel)
 
 		local sortPanels = {}
 		local totalSize = {x = 0, y = 0, p = 0}
@@ -282,8 +280,10 @@ hook.Add("CreateMenuButtons", "nutInventory", function(tabs)
 		for id, item in pairs(inventory:getItems()) do
 			if (item.isBag and hook.Run("CanOpenBagPanel", item) ~= false) then
 				local inventory = item:getInv()
+				if not inventory then continue end
 
-				local childPanels = inventory:show(mainPanel)
+				local childPanels = nut.inventory.show(inventory, mainPanel)
+				childPanels:SetTitle(item:getName())
 				nut.gui["inv"..inventory:getID()] = childPanels
 				table.insert(sortPanels, childPanels)
 

@@ -33,4 +33,40 @@ if (SERVER) then
 	function PLUGIN:ItemDraggedOutOfInventory(client, item)
 		item:interact("drop", client)
 	end
+else
+	net.Receive("nutMoveItem", function()
+		local itemID = net.ReadUInt(32)
+		local item = nut.item.instances[itemID]
+		if not item then return end
+
+		local x, y = net.ReadUInt(10), net.ReadUInt(10)
+		item.data.x = x
+		item.data.y = y
+
+		local inventory = nut.inventory.instances[item.invID]
+		if not inventory then return end
+
+		hook.Run("InventoryItemMoved", inventory, item, x, y)
+	end)
+
+	net.Receive("nutItemTransfer", function()
+		local itemID = net.ReadUInt(32)
+		local item = nut.item.instances[itemID]
+
+		local oldInventory = nut.inventory.instances[net.ReadUInt(32)]
+		local newInvID = net.ReadUInt(32)
+		local newInventory = nut.inventory.instances[newInvID]
+
+		if oldInventory then
+			oldInventory.items[itemID] = nil
+			hook.Run("InventoryItemRemoved", oldInventory, item)
+		end
+
+		if newInventory and item then
+			newInventory.items[itemID] = item
+			hook.Run("InventoryItemAdded", newInventory, item)
+		end
+
+		if item then item.invID = newInvID end
+	end)
 end

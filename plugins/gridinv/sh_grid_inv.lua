@@ -85,12 +85,16 @@ function GridInv:doesItemFitAtPos(testItem, x, y)
 	end
 
 	-- Make sure it won't overlap with an allocated spot.
-	if (self.occupied) then
-		for x2 = 0, (testItem.width or 1) - 1 do
-			for y2 = 0, (testItem.height or 1) - 1 do
-				if (self.occupied[(x + x2)..(y + y2)]) then
-					return false
-				end
+	local occupied = self.occupied
+
+	if occupied then
+		local height = self:getHeight()
+		local w, h = (testItem.width or 1) - 1, (testItem.height or 1) - 1
+
+		for x2 = 0, w do
+			for y2 = 0, h do
+				local index = (x + x2) * height + (y + y2)
+				if occupied[index] then return false end
 			end
 		end
 	end
@@ -126,9 +130,9 @@ function GridInv:getItems(noRecurse)
 	local allItems = {}
 	for id, item in pairs(items) do
 		allItems[id] = item
-		if (item.getInv and item:getInv()) then
-			allItems = table.Merge(allItems, item:getInv():getItems())
-		end
+		local inv = item.getInv and item:getInv()
+		if not inv then continue end
+		allItems = table.Merge(allItems, inv:getItems())
 	end
 	return allItems
 end
@@ -148,7 +152,7 @@ if (SERVER) then
 
 		if (SERVER) then
 			if (fullUpdate) then
-				for _, client in ipairs(player.GetAll()) do
+				for _, client in player.Iterator() do
 					if (client:getChar():getID() == owner) then
 						self:sync(client)
 						break
@@ -222,14 +226,15 @@ if (SERVER) then
 		local remainingQuantity = xOrQuantity
 
 		if (isStackCommand) then
-			local items = targetInventory:getItemsOfType(itemTypeOrItem)
+			local items, size = targetInventory:getItemsOfType(itemTypeOrItem)
 
-			if (items) then
-				for _, targetItem in pairs(items) do
+			if size > 0 then
+				for i = 1, size do
 					if (remainingQuantity == 0) then -- nothing to fill.
 						break
 					end
 
+					local targetItem = items[i]
 					local freeSpace = targetItem.maxQuantity - targetItem:getQuantity()
 
 					if (freeSpace > 0) then
@@ -278,10 +283,21 @@ if (SERVER) then
 		end
 
 		-- Allocate space for the item.
-		targetInventory.occupied = targetInventory.occupied or {}
-		for x2 = 0, (item.width or 1) - 1 do
-			for y2 = 0, (item.height or 1) - 1 do
-				targetInventory.occupied[(x + x2)..(y + y2)] = true
+		local occupied = targetInventory.occupied
+
+		if not occupied then
+			occupied = {}
+			targetInventory.occupied = occupied
+		end
+
+		local itemWidth = (item.width or 1) - 1
+		local itemHeight = (item.height or 1) - 1
+		local height = targetInventory:getHeight()
+
+		for x2 = 0, itemWidth do
+			for y2 = 0, itemHeight do
+				local index = (x + x2) * height + (y + y2)
+				occupied[index] = true
 			end
 		end
 
@@ -289,10 +305,13 @@ if (SERVER) then
 		data = table.Merge({x = x, y = y}, data or {})
 		local itemType = item.uniqueID
 		nut.item.instance(targetInventory:getID(), itemType, data, 0, 0, function(item)
-			if (targetInventory.occupied) then
-				for x2 = 0, (item.width or 1) - 1 do
-					for y2 = 0, (item.height or 1) - 1 do
-						targetInventory.occupied[(x + x2)..(y + y2)] = nil
+			occupied = targetInventory.occupied
+
+			if occupied then
+				for x2 = 0, itemWidth do
+					for y2 = 0, itemHeight do
+						local index = (x + x2) * height + (y + y2)
+						occupied[index] = nil
 					end
 				end
 			end
@@ -341,14 +360,71 @@ if (SERVER) then
 		if (isnumber(itemTypeOrID)) then
 			self:removeItem(itemTypeOrID)
 		else
-			local items = self:getItemsOfType(itemTypeOrID)
-			for i = 1, math.min(quantity, #items) do
+			local items, size = self:getItemsOfType(itemTypeOrID)
+			for i = 1, math.min(quantity, size) do
 				self:removeItem(items[i]:getID())
 			end
 		end
 
 		d:resolve()
 		return d
+	end
+
+	function GridInv:move(item, x, y)
+		local doesFit = self:doesItemFitAtPos(item, x, y)
+		if not doesFit then return false end
+		local itemID = item:getID()
+
+		item.data.x = x
+		item.data.y = y
+
+		net.Start("nutMoveItem")
+			net.WriteUInt(itemID, 32)
+			net.WriteUInt(x, 10)
+			net.WriteUInt(y, 10)
+		net.Send( self:getRecipients() )
+
+		if MYSQLOO_PREPARED then
+			nut.db.preparedCall("itemXY", nil, x, y, itemID)
+		else
+			nut.db.updateTable({ _x = x, _y = y }, nil, "items", "_itemID = " .. itemID)
+		end
+
+		return true
+	end
+
+	function GridInv:transferItem(item, newInventory, x, y)
+		local doesFit = newInventory:doesItemFitAtPos(item, x, y)
+		if not doesFit then return false end
+		local itemID = item:getID()
+		local recipients = newInventory:getRecipients()
+		local newInvID = newInventory.id
+
+		item.invID = newInvID
+		newInventory.items[itemID] = item
+		self.items[itemID] = nil
+
+		net.Start("nutItemTransfer")
+			net.WriteUInt(itemID, 32)
+			net.WriteUInt(self.id, 32)
+			net.WriteUInt(newInvID, 32)
+		net.Send(self:getRecipients())
+
+		net.Start("nutItemTransfer")
+			net.WriteUInt(itemID, 32)
+			net.WriteUInt(self.id, 32)
+			net.WriteUInt(newInvID, 32)
+		net.Send(recipients)
+
+		item:sync(recipients)
+
+		if MYSQLOO_PREPARED then
+			nut.db.preparedCall("itemUpdateInvAndXY", nil, newInvID, x, y, itemID)
+		else
+			nut.db.updateTable({ _invID = newInvID, _x = x, _y = y }, nil, "items", "_itemID = " .. itemID)
+		end
+
+		return true
 	end
 else
 	function GridInv:requestTransfer(itemID, destinationID, x, y)
@@ -377,4 +453,5 @@ else
 	end
 end
 
+if nut.inventory.types[PLUGIN.INVENTORY_TYPE_ID] then return end
 GridInv:register(PLUGIN.INVENTORY_TYPE_ID)

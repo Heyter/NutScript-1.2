@@ -243,6 +243,10 @@ function PANEL:InventoryItemDataChanged(item, key, oldValue, newValue)
 	self:populateItems()
 end
 
+function PANEL:InventoryItemMoved(item, newX, newY)
+	self:populateItems()
+end
+
 function PANEL:computeHeldPanel()
 	if (not nut.item.held or nut.item.held == self) then return end
 	local cursorX, cursorY = self:LocalCursorPos()

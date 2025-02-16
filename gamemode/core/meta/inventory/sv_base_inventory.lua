@@ -198,12 +198,14 @@ end
 -- Returns a list of players who can interact with this inventory.
 function Inventory:getRecipients()
 	local recipients = {}
-	for _, client in ipairs(player.GetAll()) do
+	local index = 0
+	for _, client in player.Iterator() do
 		if (self:canAccess(INV_REPLICATE, {client = client})) then
-			recipients[#recipients + 1] = client
+			index = index + 1
+			recipients[index] = client
 		end
 	end
-	return recipients
+	return recipients, index
 end
 
 -- Called after this inventory has first been created and loaded.
@@ -280,6 +282,8 @@ function Inventory:syncData(key, recipients)
 end
 
 function Inventory:sync(recipients)
+	recipients = recipients or self:getRecipients()
+
     net.Start("nutInventoryInit")
     -- ID is not always a number.
     net.WriteType(self.id)
@@ -287,7 +291,7 @@ function Inventory:sync(recipients)
     net.WriteTable(self.data)
     local items = {}
 
-	local function writeItem(item)
+    for _, item in pairs(self.items) do
         items[#items + 1] = {
             i = item:getID(),
             u = item.uniqueID,
@@ -296,18 +300,11 @@ function Inventory:sync(recipients)
         }
     end
 
-    for _, item in pairs(self.items) do
-        writeItem(item)
-    end
-
-    local compressedTable = util.Compress(util.TableToJSON(items))
+    local compressedTable = util.Compress(pon.encode(items))
     net.WriteUInt(#compressedTable, 32)
     net.WriteData(compressedTable, #compressedTable)
-    --local currentBytes, currentBits = net.BytesWritten()
-    --print("Current net message size: " .. currentBytes .. " bytes (" .. currentBits .. " bits)")
 
-
-    local res = net.Send(recipients or self:getRecipients())
+    net.Send(recipients)
 
     for _, item in pairs(self.items) do
         item:onSync(recipients)
